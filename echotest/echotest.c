@@ -1,53 +1,82 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
-#include "timer.h"
 #include "riffa.h"
 
 #define DATA_SZ 2048
-unsigned int data[DATA_SZ];
+unsigned int __attribute__ ((aligned (4096))) data[DATA_SZ];
 
-void* fetchdata(void* fpga_p) {
-	fpga_t* fpga = (fpga_t*) fpga_p;
+int min(int a, int b){
+	return a > b ? b : a;
+}
+
+typedef struct {
+	fpga_t* fpga;
+	int numTransactions;
+} fetchdata_args_t;
+
+void* fetchdata(void* v_args) {
+	fetchdata_args_t* args = (fetchdata_args_t*) v_args;
+	fpga_t* fpga = args->fpga;
 	int i;
-	int chnl = 1;
-	size_t numWords = 4;
-	int recvd;
+	int cmd_chnl = 0;
+	int data_chnl = 1;
+	int numTransactions = args->numTransactions;
+	int recvd, total_recvd;
 	unsigned int * sendBuffer;
-	unsigned int ** recvBuffer;
+	void ** recvBuffer;
 
 
 	// Malloc the arrays
-	sendBuffer = (unsigned int *)malloc(numWords * sizeof(unsigned int));
+	size_t sendBuffer_size = 4096;
+	size_t recvBuffer_size = 4 * sizeof(unsigned int);
+	sendBuffer = (unsigned int*)malloc(sendBuffer_size);
 	if (sendBuffer == NULL) {
-		printf("Could not malloc memory for sendBuffer\n");
+		fprintf(stderr, "Could not malloc memory for sendBuffer\n");
 		fpga_close(fpga);
 		exit(-1);
     }
 
-	recvBuffer = (unsigned int **)malloc(numWords * sizeof(unsigned int*));
+	recvBuffer = (void **)malloc(recvBuffer_size);
 	if (recvBuffer == NULL) {
-		printf("Could not malloc memory for recvBuffer\n");
+		fprintf(stderr, "Could not malloc memory for recvBuffer\n");
 		free(sendBuffer);
 		fpga_close(fpga);
 		exit(-1);
     }
 
-    while(1){
-		recvd = fpga_recv(fpga, chnl, recvBuffer, numWords * sizeof(unsigned int*), 25000);
+    for (i = 0; i < sendBuffer_size/sizeof(unsigned int); i++) {
+		sendBuffer[i] = 31337; //(rand() % DATA_SZ);
+	}
+	for (i = 0; i < recvBuffer_size/sizeof(void*); i++){
+		recvBuffer[i] = (void*) 0xdeadbeefdeadbeef;
+	}
+
+
+	total_recvd = 0;
+    while(1){ // can't really predict how many pages will be req'd but this is max: total_recvd < numTransactions * 16 / sizeof(void*)
+		recvd = fpga_recv(fpga, cmd_chnl, recvBuffer, 4, 25000);
 		if(recvd>0){
-			for(i=0; i<recvd; i++){
-				unsigned int * addr = recvBuffer[i];
-				if(addr < data || addr > data + DATA_SZ){
-					fprintf(stderr, "Accessing address %p not in array 'data' (%p).\n", addr, data);
-					sendBuffer[i] = 0;
+			total_recvd += recvd;
+			// fprintf(stderr, "%d words received\n", recvd);
+			// if(recvBuffer[1] == 0x6E706E706E706E70) {
+				unsigned int * addr = recvBuffer[0];
+				if(addr < data || addr > data + DATA_SZ - 1024){
+					fprintf(stderr, "Received address %p not in array 'data' (%p).\n", addr, data);
+					fpga_send(fpga, data_chnl, sendBuffer, sendBuffer_size / 4, 0, 1, 25000);
 				} else {
-					sendBuffer[i] = *addr;
+					fprintf(stderr, "Received address %p, sending page (size %d).\n", addr, sendBuffer_size / 4);
+					fpga_send(fpga, data_chnl, addr, sendBuffer_size / 4, 0, 1, 25000);
 				}
-			}
-			fpga_send(fpga, chnl, sendBuffer, recvd * sizeof(unsigned int), 0, 1, 25000);
+			// }
+			
 		}
 	}
+
+	free(sendBuffer);
+	free(recvBuffer);
+
+	return v_args;
 }
 
 int main(int argc, char** argv) {
@@ -57,13 +86,12 @@ int main(int argc, char** argv) {
 	int i;
 	int id;
 	int chnl;
-	size_t numWords;
+	size_t numTransactions;
 	int sent;
 	int recvd;
 
 	unsigned int ** sendBuffer;
 	unsigned int * recvBuffer;
-	GET_TIME_INIT(3);
 
 	if (argc < 2) {
 		printf("Usage: %s <option>\n", argv[0]);
@@ -75,7 +103,7 @@ int main(int argc, char** argv) {
 	if (option == 0) {	// List FPGA info
 		// Populate the fpga_info_list struct
 		if (fpga_list(&info) != 0) {
-			printf("Error populating fpga_info_list\n");
+			fprintf(stderr, "Error populating fpga_info_list\n");
 			return -1;
 		}
 		printf("Number of devices: %d\n", info.num_fpgas);
@@ -98,7 +126,7 @@ int main(int argc, char** argv) {
 		// Get the device with id
 		fpga = fpga_open(id);
 		if (fpga == NULL) {
-			printf("Could not get FPGA %d\n", id);
+			fprintf(stderr, "Could not get FPGA %d\n", id);
 			return -1;
 	    }
 
@@ -115,32 +143,36 @@ int main(int argc, char** argv) {
 		}
 
 		id = atoi(argv[2]);
-		numWords = atoi(argv[3]);
-		chnl = 0; // channel 0 for user requests, channel 1 for fpga requests
+		numTransactions = atoi(argv[3]);
+		chnl = 2; // channel 2 for user requests, channel 0,1 for fpga requests
 
 		// Get the device with id
 		fpga = fpga_open(id);
 		if (fpga == NULL) {
-			printf("Could not get FPGA %d\n", id);
+			fprintf(stderr, "Could not get FPGA %d\n", id);
 			return -1;
 	    }
 
-	    //create the thread that will answer data requests on channel 1
+	    // //create the thread that will answer data requests on channel 1
+	    fetchdata_args_t f_args;
+		f_args.fpga = fpga;
+		f_args.numTransactions = numTransactions;
 	    pthread_t answerthread;
-	    pthread_create(&answerthread, NULL, &fetchdata, (void*)fpga);
+	    pthread_create(&answerthread, NULL, &fetchdata, (void*)&f_args);
 
 		// Malloc the arrays
-		size_t sendBuffer_size = numWords * sizeof(unsigned int **);
-		size_t recvBuffer_size = numWords * sizeof(unsigned int *);
+		size_t sendBuffer_size = numTransactions * sizeof(unsigned int *);
+		size_t recvBuffer_size = numTransactions * sizeof(unsigned int) * 2; // have data,data,0,0 for now
+		// fprintf(stderr, "sizeof(unsigned int *) = %d, sizeof(unsigned int **) = %d\n", sizeof(unsigned int *), sizeof(unsigned int **));
 		sendBuffer = (unsigned int **)malloc(sendBuffer_size);
 		if (sendBuffer == NULL) {
-			printf("Could not malloc memory for sendBuffer\n");
+			fprintf(stderr, "Could not malloc memory for sendBuffer\n");
 			fpga_close(fpga);
 			return -1;
 	    }
 		recvBuffer = (unsigned int *)malloc(recvBuffer_size);
 		if (recvBuffer == NULL) {
-			printf("Could not malloc memory for recvBuffer\n");
+			fprintf(stderr, "Could not malloc memory for recvBuffer\n");
 			free(sendBuffer);
 			fpga_close(fpga);
 			return -1;
@@ -152,29 +184,27 @@ int main(int argc, char** argv) {
 	    	data[i] = i;
 	    }
 		srand((unsigned int)time(NULL));
-		for (i = 0; i < numWords; i++) {
+		for (i = 0; i < numTransactions; i++) {
 			sendBuffer[i] = data + i; //(rand() % DATA_SZ);
+			recvBuffer[i] = 1337;
+			recvBuffer[numTransactions+i] = 1337;
 		}
-
-		GET_TIME_VAL(0);
+		fprintf(stderr, "Array 'data' at %p\n", &(data[0]));
 
 		// Send the data
-		sent = fpga_send(fpga, chnl, sendBuffer, sendBuffer_size, 0, 1, 25000);
-		printf("words sent: %d\n", sent);
+		sent = fpga_send(fpga, chnl, sendBuffer, sendBuffer_size / 4, 0, 1, 5000);
+		fprintf(stderr, "words sent: %d\n", sent);
 
-		GET_TIME_VAL(1);
 
 		if (sent != 0) {
 			// Recv the data
-			recvd = fpga_recv(fpga, chnl, recvBuffer, recvBuffer_size, 25000);
-			printf("words recv: %d\n", recvd);
+			recvd = fpga_recv(fpga, chnl, recvBuffer, recvBuffer_size / 4, 5000);
+			fprintf(stderr, "words recv: %d\n", recvd);
 		}
 
-		GET_TIME_VAL(2);
-
-		// we're done, stop the answering thread
-		pthread_cancel(answerthread);
-		pthread_join(answerthread, NULL);
+		// // we're done, stop the answering thread
+		// pthread_cancel(answerthread);
+		// pthread_join(answerthread, NULL);
 
 		//clean up whatever might be stuck in the design
 		fpga_reset(fpga);
@@ -183,36 +213,34 @@ int main(int argc, char** argv) {
         fpga_close(fpga);
 
 		// Display some data
-		for (i = 0; i < 20; i++) {
-			printf("recvBuffer[%d]: %d\n", i, recvBuffer[i]);
+		for (i = 0; i < min(20, numTransactions); i++) {
+			fprintf(stderr, "sendBuffer[%d]: %p (&data[%lu])\n", i, sendBuffer[i], (sendBuffer[i] - data));
+		}
+		for (i = 0; i < min(20, 2*numTransactions); i++) {
+			fprintf(stderr, "recvBuffer[%d]: %u\n", i, recvBuffer[i]);
 		}
 
 		// Check the data
 		int num_errors = 0;
 		if (recvd != 0) {
-			for (i = 1; i < recvd; i++) {
+			for (i = 0; i < numTransactions; i++) {
 				if(recvBuffer[i] != *(sendBuffer[i])){
 					num_errors++;
 					if(num_errors <= 10){
-						printf("Mismatch: recvBuffer[%d]=%d, *(sendBuffer[%d])=%d\n", i, recvBuffer[i], i, *(sendBuffer[i]));
+						fprintf(stderr, "Mismatch: recvBuffer[%d]=%d, *(sendBuffer[%d])=%d\n", i, recvBuffer[i], i, *(sendBuffer[i]));
 					}
 				}
 			}
 
 			if(num_errors>0){
 				if(num_errors > 10){
-					printf("Further errors suppressed.\n");
+					fprintf(stderr, "Further errors suppressed.\n");
 				}
-				printf("%d error(s) detected in total.\n", num_errors);
+				fprintf(stderr, "%d error(s) detected in total.\n", num_errors);
+			} else {
+				fprintf(stderr, "No errors detected.\n");
 			}
 
-			printf("send bw: %f MB/s %fms\n",
-				sent*4.0/1024/1024/((TIME_VAL_TO_MS(1) - TIME_VAL_TO_MS(0))/1000.0),
-				(TIME_VAL_TO_MS(1) - TIME_VAL_TO_MS(0)) );
-
-			printf("recv bw: %f MB/s %fms\n",
-				recvd*4.0/1024/1024/((TIME_VAL_TO_MS(2) - TIME_VAL_TO_MS(1))/1000.0),
-				(TIME_VAL_TO_MS(2) - TIME_VAL_TO_MS(1)) );
 		}
 	}
 

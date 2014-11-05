@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include "riffa.h"
 
-#define DATA_SZ 2048
+#define DATA_SZ 4096
 unsigned int __attribute__ ((aligned (4096))) data[DATA_SZ];
 
 int min(int a, int b){
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
 	    }
 		srand((unsigned int)time(NULL));
 		for (i = 0; i < numTransactions; i++) {
-			sendBuffer[i] = data + i; //(rand() % DATA_SZ);
+			sendBuffer[i] = data + (rand() % DATA_SZ);
 			recvBuffer[i] = 1337;
 			recvBuffer[numTransactions+i] = 1337;
 		}
@@ -195,10 +195,10 @@ int main(int argc, char** argv) {
 		sent = fpga_send(fpga, chnl, sendBuffer, sendBuffer_size / 4, 0, 1, 5000);
 		fprintf(stderr, "words sent: %d\n", sent);
 
-
-		if (sent != 0) {
+		recvd = 0;
+		while (recvd < sent) {
 			// Recv the data
-			recvd = fpga_recv(fpga, chnl, recvBuffer, recvBuffer_size / 4, 5000);
+			recvd += fpga_recv(fpga, chnl, &(recvBuffer[recvd]), (recvBuffer_size / 4) - recvd, 5000);
 			fprintf(stderr, "words recv: %d\n", recvd);
 		}
 
@@ -223,11 +223,17 @@ int main(int argc, char** argv) {
 		// Check the data
 		int num_errors = 0;
 		if (recvd != 0) {
-			for (i = 0; i < numTransactions; i++) {
-				if(recvBuffer[i] != *(sendBuffer[i])){
+			for (i = 0; i < numTransactions/2; i++) {
+				if(recvBuffer[4*i] != *(sendBuffer[2*i])){
 					num_errors++;
 					if(num_errors <= 10){
-						fprintf(stderr, "Mismatch: recvBuffer[%d]=%d, *(sendBuffer[%d])=%d\n", i, recvBuffer[i], i, *(sendBuffer[i]));
+						fprintf(stderr, "Mismatch: recvBuffer[%d]=%d, *(sendBuffer[%d])=%d\n", i, recvBuffer[4*i], i, *(sendBuffer[2*i]));
+					}
+				}
+				if(recvBuffer[4*i+1] != *(sendBuffer[2*i+1])){
+					num_errors++;
+					if(num_errors <= 10){
+						fprintf(stderr, "Mismatch: recvBuffer[%d]=%d, *(sendBuffer[%d])=%d\n", i, recvBuffer[4*i+1], i, *(sendBuffer[2*i+1]));
 					}
 				}
 			}

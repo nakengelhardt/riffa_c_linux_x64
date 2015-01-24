@@ -80,6 +80,21 @@ int main (int argc, char *argv[]) {
 
 	fpga_flush(fpga);
 
+	int num_errors = 0;
+	for(int i=0; i < array_size; i++){
+		if(a[i] != i){
+			num_errors++;
+			if(num_errors < 10){
+				printf("a[%d]: %d\n", i, a[i]);
+			}
+		}
+	}
+	if(num_errors > 0){
+		printf("%d errors total.\n", num_errors);
+	} else {
+		printf("No errors.\n");
+	}
+
 	fpga_reset(fpga);
 	
 	fpga_close(fpga);

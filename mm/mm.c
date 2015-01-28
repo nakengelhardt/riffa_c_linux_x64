@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include "riffa.h"
+#include "timer.h"
 
 void initialize_matrix(uint16_t* m, int rows, int cols){
 	int i,j;
@@ -123,12 +124,17 @@ uint16_t*	a,           /* matrix A to be multiplied */
 
 
 int main (int argc, char *argv[]) {
+	GET_TIME_INIT(3);
 
 	long page_size = sysconf(_SC_PAGESIZE);
 
-	size_t size_a = page_size * ((dim_i * dim_k * sizeof(uint16_t) + page_size - 1) / page_size);
-	size_t size_b = page_size * ((dim_k * dim_j * sizeof(uint16_t) + page_size - 1) / page_size);
-	size_t size_c = page_size * ((dim_i * dim_j * sizeof(uint16_t) + page_size - 1) / page_size);
+	//size_t size_a = page_size * ((dim_i * dim_k * sizeof(uint16_t) + page_size - 1) / page_size);
+	//size_t size_b = page_size * ((dim_k * dim_j * sizeof(uint16_t) + page_size - 1) / page_size);
+	//size_t size_c = page_size * ((dim_i * dim_j * sizeof(uint16_t) + page_size - 1) / page_size);
+
+	size_t size_a = dim_i * dim_k * sizeof(uint16_t); 
+	size_t size_b = dim_k * dim_j * sizeof(uint16_t);
+	size_t size_c = dim_i * dim_j * sizeof(uint16_t);
 
 	a = memalign(page_size, size_a);
 	b = memalign(page_size, size_b);
@@ -140,13 +146,17 @@ int main (int argc, char *argv[]) {
 	initialize_matrix(a, dim_i, dim_k);
 	initialize_matrix(b, dim_k, dim_j);
 
+	GET_TIME_VAL(0);
 	int error = multiply_matrices_on_fpga(a, b, c, dim_i, dim_j, dim_k);
+	GET_TIME_VAL(1);
 
 	if(error){
 		return -1;
 	}
 
+	GET_TIME_VAL(2);
 	multiply_matrices(a, b, gold_c, dim_i, dim_j, dim_k);
+	GET_TIME_VAL(3);
 
 	int differences = count_differences(c, gold_c, dim_i, dim_j);
 
@@ -156,5 +166,8 @@ int main (int argc, char *argv[]) {
 	}
 
 	printf("SUCCESS: matrices are identical.\n");
+
+	printf("FPGA: %f s\n", ((TIME_VAL_TO_MS(1) - TIME_VAL_TO_MS(0))/1000.0));
+	printf("CPU:  %f s\n", ((TIME_VAL_TO_MS(3) - TIME_VAL_TO_MS(2))/1000.0));
 	return 0;
 }

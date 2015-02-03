@@ -1,4 +1,4 @@
-program_NAME := mm
+program_NAME := count
 program_C_SRCS := $(wildcard *.c)
 program_CXX_SRCS := $(wildcard *.cpp)
 program_C_OBJS := ${program_C_SRCS:.c=.o}

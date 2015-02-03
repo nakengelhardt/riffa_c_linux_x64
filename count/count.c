@@ -54,45 +54,49 @@ int main (int argc, char *argv[]) {
 	arg_struct->array_base = a;
 	arg_struct->array_size = array_size;
 
-	int sent = 0;
-	sent = fpga_send(fpga, chnl, arg_struct, sizeof(fpga_args) / 4, 0, 1, 5000);
-	if(sent < sizeof(fpga_args) / 4){
-		printf("Could not send arguments to FPGA.\n");
-		return -1;
-	}
-
 	fpga_ret* recv_struct;
 
 	recv_struct = memalign(4, sizeof(fpga_ret));
 
-	int recvd = 0;
-	recvd = fpga_recv(fpga, chnl, recv_struct, ( sizeof(fpga_ret) >> 2) + 1, 5000);
-	if(!recvd){
+	int num_retries = 3;
 
-		printf("Waiting for FPGA response timed out.\n");
-		fpga_reset(fpga);
-		fpga_close(fpga);
+	for(int i = 0; i < num_retries; i++){
+		int sent = 0;
+		sent = fpga_send(fpga, chnl, arg_struct, sizeof(fpga_args) / 4, 0, 1, 5000);
+		if(sent < sizeof(fpga_args) / 4){
+			printf("Could not send arguments to FPGA.\n");
+			return -1;
+		}
 
-		return -1;
-	}
+		int recvd = 0;
+		recvd = fpga_recv(fpga, chnl, recv_struct, ( sizeof(fpga_ret) >> 2) + 1, 5000);
+		if(!recvd){
 
-	printf("FPGA counted to %u!\n", recv_struct->count);
+			printf("Waiting for FPGA response timed out.\n");
+			fpga_reset(fpga);
+			fpga_close(fpga);
 
-	fpga_flush(fpga);
+			return -1;
+		}
 
-	int num_errors = 0;
-	for(int i=0; i < array_size; i++){
-		if(a[i] != i){
-			num_errors++;
-			if(num_errors < 10){
-				printf("a[%d]: %d\n", i, a[i]);
+		printf("FPGA counted to %u!\n", recv_struct->count);
+
+		fpga_flush(fpga);
+
+		int num_errors = 0;
+		for(int i=0; i < array_size; i++){
+			if(a[i] != i){
+				num_errors++;
+				if(num_errors < 10){
+					printf("a[%d]: %d\n", i, a[i]);
+				}
 			}
 		}
-	}
-	if(num_errors > 0){
-		printf("%d errors total.\n", num_errors);
-	} else {
-		printf("No errors.\n");
+		if(num_errors > 0){
+			printf("%d errors total.\n", num_errors);
+		} else {
+			printf("No errors.\n");
+		}
 	}
 
 	fpga_reset(fpga);

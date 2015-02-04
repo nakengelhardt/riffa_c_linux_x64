@@ -1,4 +1,4 @@
-lib_NAME := virtmem
+lib_NAME := riffa_virtmem
 lib_C_SRCS := $(lib_NAME).c
 lib_C_OBJS := ${lib_C_SRCS:.c=.o}
 

@@ -5,7 +5,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "virtmem.h"
+#include "riffa_virtmem.h"
 
 struct fpga_t
 {

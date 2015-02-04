@@ -1,5 +1,5 @@
-#ifndef VIRTMEM_H
-#define VIRTMEM_H
+#ifndef RIFFA_VIRTMEM_H
+#define RIFFA_VIRTMEM_H
 
 #include "riffa.h"
 

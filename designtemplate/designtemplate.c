@@ -3,15 +3,15 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "riffa.h"
+#include "riffa_virtmem.h"
 
 
 typedef struct {
-	...
+	//...
 } fpga_args;
 
 typedef struct {
-	...
+	//...
 } fpga_ret;
 
 int main (int argc, char *argv[]) {
@@ -19,7 +19,7 @@ int main (int argc, char *argv[]) {
 	int id = 0;
 	int chnl = 2;
 
-	fpga = fpga_open(id);
+	fpga = virtmem_open(id);
 	if (fpga == NULL) {
 		fprintf(stderr, "Could not get FPGA %d\n", id);
 		return -1;
@@ -48,18 +48,18 @@ int main (int argc, char *argv[]) {
 
 		printf("Waiting for FPGA response timed out.\n");
 		fpga_reset(fpga);
-		fpga_close(fpga);
+		virtmem_close(fpga);
 
 		return -1;
 	}
 
 	//TODO: read and check recv_struct
 
-	fpga_flush(fpga);
+	virtmem_flush(fpga);
 
 	fpga_reset(fpga);
 	
-	fpga_close(fpga);
+	virtmem_close(fpga);
 
 	return 0;
 }

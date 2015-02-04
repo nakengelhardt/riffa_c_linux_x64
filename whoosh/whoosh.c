@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <stdint.h>
-#include "riffa.h"
+#include "riffa_virtmem.h"
 
 #define DATA_SZ 4096
 unsigned int __attribute__ ((aligned (4096))) data[DATA_SZ];
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 		chnl = 2; // channel 2 for user requests, channel 0,1 for fpga requests
 
 		// Get the device with id
-		fpga = fpga_open(id);
+		fpga = virtmem_open(id);
 		if (fpga == NULL) {
 			fprintf(stderr, "Could not get FPGA %d\n", id);
 			return -1;
@@ -92,14 +92,14 @@ int main(int argc, char** argv) {
 		sendBuffer = (whoosh_args *)malloc(sendBuffer_size);
 		if (sendBuffer == NULL) {
 			fprintf(stderr, "Could not malloc memory for sendBuffer\n");
-			fpga_close(fpga);
+			virtmem_close(fpga);
 			return -1;
 	    }
 		recvBuffer = (unsigned int *)malloc(recvBuffer_size);
 		if (recvBuffer == NULL) {
 			fprintf(stderr, "Could not malloc memory for recvBuffer\n");
 			free(sendBuffer);
-			fpga_close(fpga);
+			virtmem_close(fpga);
 			return -1;
 	    }
 
@@ -125,10 +125,10 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "Calculation finish notification: %d words processed\n", recvBuffer[0]);
 
 		//send flush command
-		fpga_flush(fpga);
+		virtmem_flush(fpga);
 
 		// Done with device
-        fpga_close(fpga);
+        virtmem_close(fpga);
 
 		// Check the data
 		int num_errors = 0;

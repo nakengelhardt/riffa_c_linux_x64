@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "riffa.h"
+#include "riffa_virtmem.h"
 
 
 
@@ -41,7 +41,7 @@ int main (int argc, char *argv[]) {
 	int id = 0;
 	int chnl = 2;
 
-	fpga = fpga_open(id);
+	fpga = virtmem_open(id);
 	if (fpga == NULL) {
 		fprintf(stderr, "Could not get FPGA %d\n", id);
 		return -1;
@@ -65,6 +65,8 @@ int main (int argc, char *argv[]) {
 		sent = fpga_send(fpga, chnl, arg_struct, sizeof(fpga_args) / 4, 0, 1, 5000);
 		if(sent < sizeof(fpga_args) / 4){
 			printf("Could not send arguments to FPGA.\n");
+			fpga_reset(fpga);
+			virtmem_close(fpga);
 			return -1;
 		}
 
@@ -74,14 +76,14 @@ int main (int argc, char *argv[]) {
 
 			printf("Waiting for FPGA response timed out.\n");
 			fpga_reset(fpga);
-			fpga_close(fpga);
+			virtmem_close(fpga);
 
 			return -1;
 		}
 
 		printf("FPGA counted to %u!\n", recv_struct->count);
 
-		fpga_flush(fpga);
+		virtmem_flush(fpga);
 
 		int num_errors = 0;
 		for(int i=0; i < array_size; i++){
@@ -101,7 +103,7 @@ int main (int argc, char *argv[]) {
 
 	fpga_reset(fpga);
 	
-	fpga_close(fpga);
+	virtmem_close(fpga);
 
 	return 0;
 }

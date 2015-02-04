@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "riffa.h"
+#include "riffa_virtmem.h"
 #include "timer.h"
 
 void initialize_matrix(uint16_t* m, int rows, int cols){
@@ -48,7 +48,7 @@ int multiply_matrices_on_fpga(uint16_t* m1, uint16_t* m2, uint16_t* res, int res
 	int id = 0;
 	int chnl = 2;
 
-	fpga = fpga_open(id);
+	fpga = virtmem_open(id);
 	if (fpga == NULL) {
 		fprintf(stderr, "Could not get FPGA %d\n", id);
 		return -1;
@@ -79,21 +79,18 @@ int multiply_matrices_on_fpga(uint16_t* m1, uint16_t* m2, uint16_t* res, int res
 	int recvd = 0;
 	recvd = fpga_recv(fpga, chnl, recv_struct, ( sizeof(fpga_ret) >> 2) + 1, 5000);
 	if(!recvd){
-
 		printf("Waiting for FPGA response timed out.\n");
 		fpga_reset(fpga);
-		fpga_close(fpga);
+		virtmem_close(fpga);
 
 		return -1;
 	}
 
 	printf("FPGA reports matrix multiply completed in %lu cycles.\n", recv_struct->cycles);
 
-	fpga_flush(fpga);
-
+	virtmem_flush(fpga);
 	fpga_reset(fpga);
-	
-	fpga_close(fpga);
+	virtmem_close(fpga);
 
 	return 0;
 }

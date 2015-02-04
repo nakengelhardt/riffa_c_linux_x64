@@ -3,8 +3,9 @@ program_C_SRCS := $(wildcard *.c)
 program_CXX_SRCS := $(wildcard *.cpp)
 program_C_OBJS := ${program_C_SRCS:.c=.o}
 program_CXX_OBJS := ${program_CXX_SRCS:.cpp=.o}
-program_OBJS := $(program_C_OBJS) $(program_CXX_OBJS)
-program_INCLUDE_DIRS :=
+virtmem_lib := ../virtmem_lib/riffa_virtmem.o
+program_OBJS := $(program_C_OBJS) $(program_CXX_OBJS) $(virtmem_lib)
+program_INCLUDE_DIRS := ../virtmem_lib/
 program_LIBRARY_DIRS :=
 program_LIBRARIES := riffa pthread m
 CPPFLAGS += -g -Wall -std=gnu99
@@ -25,3 +26,4 @@ clean:
 	@- $(RM) $(program_OBJS)
 
 distclean: clean
+
